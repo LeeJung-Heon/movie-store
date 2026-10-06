@@ -29,25 +29,25 @@ public class BookingKafkaConsumer {
     public void handlePaymentCompleted(Map<String, Object> event) {
         log.info("[Kafka Consumer] payment.completed 수신: {}", event);
 
+        Object bookingIdValue = event.get("bookingId");
+        Long bookingId;
         try {
-            Object bookingIdValue = event.get("bookingId");
-
             if (bookingIdValue == null) {
                 throw new IllegalArgumentException(
                         "payment.completed 이벤트에 bookingId가 없습니다. payment-service 계약을 확인하세요.");
             }
-
-            Long bookingId = bookingIdValue instanceof Number number
+            bookingId = bookingIdValue instanceof Number number
                     ? number.longValue()
                     : Long.parseLong(bookingIdValue.toString().trim());
-            bookingService.confirmBooking(bookingId);
-
-            log.info("[Kafka Consumer] 예매 확정 완료 - bookingId: {}", bookingId);
-
-        } catch (Exception e) {
-            // 예외를 삼켜 리스너 컨테이너가 계속 살아 있게 한다
-            log.error("[Kafka Consumer] 예매 확정 실패 - event: {}, error: {}",
-                    event, e.getMessage(), e);
+        } catch (IllegalArgumentException e) {
+            // 계약 위반 이벤트는 재시도해도 성공하지 않으므로 기록만 하고 넘긴다
+            log.error("[Kafka Consumer] 잘못된 이벤트 - event: {}, error: {}", event, e.getMessage());
+            return;
         }
+
+        // [부하 실험 수정] DB 커넥션 부족 같은 일시 오류를 삼키면 오프셋이 커밋되어
+        // '결제 완료 + 예매 PENDING' 불일치가 영구히 남는다. 예외를 던져 에러 핸들러가 재시도하게 한다.
+        bookingService.confirmBooking(bookingId);
+        log.info("[Kafka Consumer] 예매 확정 완료 - bookingId: {}", bookingId);
     }
 }

@@ -8,6 +8,7 @@ import com.lecture.booking.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -36,6 +37,10 @@ public class BookingService {
      *
      * 중복 예매 검사는 하지 않는다. 같은 영화를 여러 번 예매할 수 있다.
      */
+    // [부하 실험 수정] 원격 호출(영화 조회·결제) 동안 DB 커넥션을 쥐지 않도록 바깥 트랜잭션을 두지 않는다.
+    // 바깥 readOnly 트랜잭션이 커넥션을 잡은 채 REQUIRES_NEW 가 커넥션을 하나 더 요구하면,
+    // 동시 요청이 풀 크기(10)를 넘을 때 서로를 기다리며 30초 타임아웃으로 실패했다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public BookingDto.BookingResponse book(Long userId, BookingDto.BookRequest request) {
         Long movieId = request.getMovieId();
         int quantity = request.getQuantity() == null ? 1 : request.getQuantity();

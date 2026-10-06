@@ -13,6 +13,8 @@ spring:
     driver-class-name: org.mariadb.jdbc.Driver
 
   jpa:
+    # [부하 실험 수정] 요청이 끝날 때까지 커넥션을 붙잡지 않도록 OSIV 비활성화
+    open-in-view: false
     hibernate:
       ddl-auto: update
     show-sql: true
