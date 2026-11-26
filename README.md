@@ -8,6 +8,24 @@
 
 ---
 
+## 담당 범위 및 핵심 정합성 설계
+
+Spring Boot 기반 강의 수강신청 MSA 템플릿을 영화 예매 플랫폼으로 전환하는 팀 프로젝트에서 **`movie-service`, `booking-service`, `payment-service`, `api-gateway`의 도메인 재설계와 프론트엔드 API 연동**을 담당했다 (`recommend-service` 및 화면은 팀원 담당).
+
+![예매·동기 결제·비동기 Kafka 확정 및 실패 격리 흐름도](docs/diagrams/booking-payment-flow.png)
+
+| 설계 항목 | 문제 배경 | 적용한 해결 방식 |
+|---|---|---|
+| **재예매 1:1 결제 계약** | 기존 `(user_id, course_id)` 복합 유니크로는 동일 영화 재예매 시 결제 대상이 엇갈림 | `bookings` 복합 유니크 제거 후 `payments.booking_id`에 `NOT NULL + UNIQUE` 부여 |
+| **동기·비동기 역전 방지** | 결제가 빠르면 `payment.completed`가 예매 저장 커밋보다 먼저 도착해 확정 실패 | `PENDING` 예매를 `REQUIRES_NEW`로 선커밋 후 결제 호출, 실패 시 `CANCELLED` 보상 취소 |
+| **멱등 확정 및 발행 격리** | 중복 이벤트나 `KafkaTemplate.send` 동기 예외가 결제된 예매까지 롤백시킬 위험 | `CONFIRMED` 재전달 무시, `booking_count` 원자적 `UPDATE`, 추천 이벤트 발행 예외 격리 |
+| **MVCC 스냅샷 가시성** | `getBoxoffice()` 최초 수집 시 외곽 `readOnly` 트랜잭션의 MariaDB `REPEATABLE READ` 스냅샷 고정으로 신규 영화 누락 | 조회 진입 메서드에 `NOT_SUPPORTED` 전파 분리로 최신 커밋본 조회 |
+| **게이트웨이 경계 제어** | 내부 API 외부 노출 및 게이트웨이·하위 서비스 간 CORS 헤더 중복 삽입 | `/api/*/internal/**` 외부 차단(`denyAll`) 및 `DedupeResponseHeader` 설정 |
+
+> 동시 200건 요청 부하 실험에서 확인한 HikariCP `REQUIRES_NEW` 커넥션 풀 교착 해소(`NOT_SUPPORTED`) 및 컨슈머 재시도·DLT(`payment.completed.DLT`) 격리 실험은 [`feat/booking-service-api`](https://github.com/LeeJung-Heon/movie-store/tree/feat/booking-service-api) 브랜치에 정리되어 있다.
+
+---
+
 ## 시스템 구성
 
 ```
